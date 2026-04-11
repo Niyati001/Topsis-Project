@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as f:
 
 setup(
     name="Topsis-Niyati-102303356",
-    version="1.0.0",
+    version="1.0.1",
     author="Niyati",
     author_email="niyati@example.com",
     description="A Python package for TOPSIS (Technique for Order of Preference by Similarity to Ideal Solution) multi-criteria decision analysis",
