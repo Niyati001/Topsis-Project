@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TOPSIS Decision Maker</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Inter', sans-serif;
+    background: #dce8f5;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem 1rem;
+  }
+  .page { width: 100%; max-width: 520px; }
+  h1 { text-align: center; font-size: 26px; font-weight: 700; color: #111; margin-bottom: 6px; }
+  .sub { text-align: center; font-size: 13px; color: #666; margin-bottom: 24px; }
+  .card {
+    background: #fff;
+    border-radius: 16px;
+    padding: 28px 28px 24px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.07);
+  }
+  .field { margin-bottom: 20px; }
+  .field label { display: block; font-size: 14px; font-weight: 600; color: #111; margin-bottom: 8px; }
+  .field .hint { font-size: 12px; color: #888; margin-top: 5px; }
+
+  /* File input */
+  .file-row {
+    display: flex; align-items: center;
+    border: 1px solid #e0e0e0; border-radius: 8px;
+    overflow: hidden; background: #f8f8f8; cursor: pointer;
+  }
+  .file-row input[type=file] { display: none; }
+  .file-btn {
+    padding: 10px 14px; background: #f0f0f0;
+    border-right: 1px solid #e0e0e0;
+    font-size: 13px; color: #333;
+    white-space: nowrap; flex-shrink: 0;
+  }
+  .file-row:hover .file-btn { background: #e8e8e8; }
+  .file-label {
+    padding: 10px 12px; font-size: 13px;
+    color: #999; flex: 1;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .file-label.chosen { color: #333; }
+  .upload-icon { padding: 10px 12px; color: #aaa; flex-shrink: 0; }
+
+  /* Text inputs */
+  input[type=text], input[type=email] {
+    width: 100%; padding: 10px 12px;
+    border: 1px solid #e0e0e0; border-radius: 8px;
+    font-size: 13px; font-family: 'Inter', sans-serif;
+    color: #111; background: #f8f8f8; outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  input[type=text]:focus, input[type=email]:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59,130,246,0.12);
+    background: #fff;
+  }
+
+  /* Column detection tag */
+  .col-tag {
+    display: none; margin-top: 6px;
+    font-size: 11px; color: #2563eb;
+    background: #eff6ff; border: 1px solid #bfdbfe;
+    border-radius: 4px; padding: 2px 8px;
+    font-weight: 500; width: fit-content;
+  }
+
+  /* Impact chips */
+  .chips-row { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 4px 9px; border-radius: 6px;
+    font-size: 12px; font-weight: 500;
+    cursor: pointer; user-select: none;
+    border: 1px solid; transition: all 0.12s;
+    font-family: 'Inter', sans-serif;
+  }
+  .chip.plus  { background: #f0fdf4; border-color: #86efac; color: #166534; }
+  .chip.minus { background: #fef2f2; border-color: #fca5a5; color: #991b1b; }
+  .chip-col { font-size: 10px; color: #aaa; }
+
+  /* Messages */
+  .success-box {
+    display: none; align-items: center; gap: 8px;
+    padding: 11px 14px; border: 1px solid #d1d5db;
+    border-radius: 8px; font-size: 13px; color: #555;
+    margin-bottom: 16px;
+  }
+  .success-box.show { display: flex; }
+  .error-box {
+    display: none; padding: 11px 14px; border-radius: 8px;
+    font-size: 13px; color: #b91c1c;
+    background: #fef2f2; border: 1px solid #fecaca;
+    margin-bottom: 16px;
+  }
+  .error-box.show { display: block; }
+
+  /* Submit button */
+  .submit-btn {
+    width: 100%; padding: 13px; background: #111;
+    border: none; border-radius: 10px; color: #fff;
+    font-family: 'Inter', sans-serif; font-size: 15px;
+    font-weight: 600; cursor: pointer;
+    transition: background 0.15s;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  .submit-btn:hover { background: #222; }
+  .submit-btn:disabled { background: #555; cursor: not-allowed; }
+  .spinner {
+    width: 16px; height: 16px;
+    border: 2px solid rgba(255,255,255,0.4);
+    border-top-color: #fff; border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>TOPSIS Decision Maker</h1>
+  <p class="sub">Multi-criteria decision analysis tool for optimal alternative selection</p>
+
+  <div class="card">
+
+    <!-- File Upload -->
+    <div class="field">
+      <label>Upload CSV</label>
+      <div class="file-row" onclick="document.getElementById('csvInput').click()">
+        <input type="file" id="csvInput" accept=".csv" onchange="handleFile(event)">
+        <span class="file-btn">Choose File</span>
+        <span class="file-label" id="fileLabel">No file chosen</span>
+        <span class="upload-icon">
+          <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" viewBox="0 0 16 16">
+            <path d="M8 11V3M5 6l3-3 3 3M3 13h10"/>
+          </svg>
+        </span>
+      </div>
+      <div class="col-tag" id="colTag"></div>
+    </div>
+
+    <!-- Weights -->
+    <div class="field">
+      <label>Weights</label>
+      <input type="text" id="weights" placeholder="1,2,3,4" oninput="syncChips()">
+      <div class="hint">Comma-separated positive numbers</div>
+    </div>
+
+    <!-- Impacts -->
+    <div class="field">
+      <label>Impacts</label>
+      <input type="text" id="impactsInput" placeholder="+,-,+,+" oninput="onImpactType()">
+      <div class="hint">+ for benefit, - for cost</div>
+      <div class="chips-row" id="chipsRow"></div>
+    </div>
+
+    <!-- Email -->
+    <div class="field">
+      <label>Email</label>
+      <input type="email" id="email" placeholder="your.email@example.com">
+      <div class="hint">Results will be sent to this email</div>
+    </div>
+
+    <!-- Messages -->
+    <div class="success-box" id="successBox">
+      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" viewBox="0 0 16 16">
+        <circle cx="8" cy="8" r="7"/><polyline points="5,8.5 7,10.5 11,6"/>
+      </svg>
+      <span id="successText">TOPSIS analysis completed! Results have been sent to your email.</span>
+    </div>
+    <div class="error-box" id="errorBox"></div>
+
+    <!-- Submit -->
+    <button class="submit-btn" id="submitBtn" onclick="handleSubmit()">
+      <span id="btnText">Submit</span>
+    </button>
+
+  </div>
+</div>
+
+<script>
+  let csvFile = null;
+  let parsedCols = 0;
+  let chipStates = [];
+
+  // ─── File Handling ───────────────────────────────────────────
+  function handleFile(e) {
+    const f = e.target.files[0];
+    if (!f) return;
+    if (!f.name.endsWith('.csv')) { showError('Please upload a .csv file.'); return; }
+    csvFile = f;
+
+    const lbl = document.getElementById('fileLabel');
+    lbl.textContent = f.name;
+    lbl.classList.add('chosen');
+    hideMessages();
+
+    Papa.parse(f, {
+      preview: 1,
+      skipEmptyLines: true,
+      complete: r => {
+        if (r.data[0]) {
+          parsedCols = r.data[0].length - 1;
+          const tag = document.getElementById('colTag');
+          tag.textContent = parsedCols + ' criteria columns detected';
+          tag.style.display = 'block';
+          buildChips(parsedCols);
+        }
+      }
+    });
+  }
+
+  // ─── Drag & Drop ─────────────────────────────────────────────
+  const fileRow = document.querySelector('.file-row');
+  fileRow.addEventListener('dragover', e => { e.preventDefault(); fileRow.style.background = '#e8f0fe'; });
+  fileRow.addEventListener('dragleave', () => { fileRow.style.background = '#f8f8f8'; });
+  fileRow.addEventListener('drop', e => {
+    e.preventDefault(); fileRow.style.background = '#f8f8f8';
+    const f = e.dataTransfer.files[0];
+    if (f) { document.getElementById('csvInput').files = e.dataTransfer.files; handleFile({ target: { files: [f] } }); }
+  });
+
+  // ─── Impact Chips ────────────────────────────────────────────
+  function buildChips(n) {
+    chipStates = new Array(n).fill(true);
+    renderChips();
+    updateImpactField();
+  }
+
+  function renderChips() {
+    const row = document.getElementById('chipsRow');
+    row.innerHTML = '';
+    chipStates.forEach((isPlus, i) => {
+      const c = document.createElement('div');
+      c.className = 'chip ' + (isPlus ? 'plus' : 'minus');
+      c.innerHTML = `<span class="chip-col">C${i+2}</span><span>${isPlus ? '+' : '−'}</span>`;
+      c.onclick = () => { chipStates[i] = !chipStates[i]; renderChips(); updateImpactField(); };
+      row.appendChild(c);
+    });
+  }
+
+  function updateImpactField() {
+    document.getElementById('impactsInput').value = chipStates.map(s => s ? '+' : '-').join(',');
+  }
+
+  function onImpactType() {
+    const val = document.getElementById('impactsInput').value;
+    const parts = val.split(',').map(p => p.trim());
+    chipStates = parts.map(p => p !== '-');
+    renderChips();
+  }
+
+  function syncChips() {
+    const w = document.getElementById('weights').value;
+    const n = w.split(',').filter(p => p.trim() !== '').length;
+    if (n > 0 && parsedCols === 0) buildChips(n);
+  }
+
+  // ─── Messages ────────────────────────────────────────────────
+  function showError(msg) {
+    document.getElementById('errorBox').textContent = msg;
+    document.getElementById('errorBox').classList.add('show');
+    document.getElementById('successBox').classList.remove('show');
+  }
+  function showSuccess(msg) {
+    document.getElementById('successText').textContent = msg;
+    document.getElementById('successBox').classList.add('show');
+    document.getElementById('errorBox').classList.remove('show');
+  }
+  function hideMessages() {
+    document.getElementById('errorBox').classList.remove('show');
+    document.getElementById('successBox').classList.remove('show');
+  }
+
+  // ─── Submit ──────────────────────────────────────────────────
+  function setLoading(on) {
+    const btn = document.getElementById('submitBtn');
+    const txt = document.getElementById('btnText');
+    btn.disabled = on;
+    txt.innerHTML = on
+      ? '<div class="spinner"></div> Processing…'
+      : 'Submit';
+  }
+
+  function handleSubmit() {
+    hideMessages();
+
+    const weights      = document.getElementById('weights').value.trim();
+    const impacts      = document.getElementById('impactsInput').value.trim();
+    const email        = document.getElementById('email').value.trim();
+
+    // Validations (match Part I requirements)
+    if (!csvFile)    return showError('Please upload a CSV file.');
+    if (!weights)    return showError('Please enter weights.');
+    if (!impacts)    return showError('Please enter impacts.');
+    if (!email)      return showError('Please enter your email address.');
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+      return showError('Invalid email format.');
+
+    const wArr = weights.split(',').map(w => parseFloat(w.trim()));
+    if (wArr.some(isNaN) || wArr.some(w => w <= 0))
+      return showError('Weights must be positive numbers separated by commas.');
+
+    const iArr = impacts.split(',').map(i => i.trim());
+    if (iArr.some(i => i !== '+' && i !== '-'))
+      return showError('Impacts must be + or − only, separated by commas.');
+
+    if (wArr.length !== iArr.length)
+      return showError(`Weights (${wArr.length}) and impacts (${iArr.length}) count must match.`);
+
+    if (parsedCols > 0 && wArr.length !== parsedCols)
+      return showError(`Your file has ${parsedCols} criteria columns but you entered ${wArr.length} values.`);
+
+    setLoading(true);
+
+    const fd = new FormData();
+    fd.append('file', csvFile);
+    fd.append('weights', weights);
+    fd.append('impacts', impacts);
+    fd.append('email', email);
+
+    // ── Change this URL to your backend ──
+    const BACKEND_URL = 'https://topsis-dr-p-s-rana-a8t2.onrender.com/topsis';
+
+    fetch(BACKEND_URL, { method: 'POST', body: fd })
+      .then(r => {
+        if (!r.ok) return r.text().then(t => { throw new Error(t || 'Server error'); });
+        return r.blob();
+      })
+      .then(blob => {
+        // Download result CSV
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = 'topsis_result.csv';
+        a.click(); URL.revokeObjectURL(url);
+        showSuccess('TOPSIS analysis completed! Results have been sent to your email.');
+        resetForm();
+      })
+      .catch(err => showError(err.message || 'Failed to process. Please try again.'))
+      .finally(() => setLoading(false));
+  }
+
+  function resetForm() {
+    csvFile = null; parsedCols = 0; chipStates = [];
+    document.getElementById('fileLabel').textContent = 'No file chosen';
+    document.getElementById('fileLabel').classList.remove('chosen');
+    document.getElementById('weights').value = '';
+    document.getElementById('impactsInput').value = '';
+    document.getElementById('email').value = '';
+    document.getElementById('chipsRow').innerHTML = '';
+    document.getElementById('colTag').style.display = 'none';
+    document.getElementById('csvInput').value = '';
+  }
+</script>
+</body>
+</html>
