@@ -19,10 +19,9 @@ SENDGRID_API_KEY = os.environ.get('SENDGRID_API_KEY', '')
 
 
 def send_email_sendgrid(to_email, csv_bytes):
-    """Send email via SendGrid HTTP API — works on all cloud platforms."""
     if not SENDGRID_API_KEY or not SENDER_EMAIL:
-        print("SendGrid credentials not set — skipping email.")
-        return
+        print("ERROR: SendGrid credentials not set in environment variables")
+        return "no_credentials"
 
     try:
         csv_b64 = base64.b64encode(csv_bytes).decode()
@@ -37,12 +36,10 @@ def send_email_sendgrid(to_email, csv_bytes):
                 <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
                   <h2 style="color:#1D9E75">TOPSIS Analysis Complete</h2>
                   <p>Your multi-criteria decision analysis results are attached.</p>
-                  <h3>What's in the file:</h3>
                   <ul>
-                    <li><b>Topsis Score</b>: 0 to 1 — higher means better alternative</li>
-                    <li><b>Rank</b>: 1 = best alternative overall</li>
+                    <li><b>Topsis Score</b>: 0 to 1 — higher = better</li>
+                    <li><b>Rank</b>: 1 = best alternative</li>
                   </ul>
-                  <p style="color:#888;font-size:12px">Sent by TOPSIS Decision Maker</p>
                 </div>
                 """
             }],
@@ -65,13 +62,16 @@ def send_email_sendgrid(to_email, csv_bytes):
             method='POST'
         )
         with urllib.request.urlopen(req) as resp:
-            print(f"Email sent to {to_email} — status {resp.status}")
+            print(f"EMAIL OK — sent to {to_email}, status={resp.status}")
+            return "ok"
 
     except urllib.error.HTTPError as e:
         body = e.read().decode()
-        print(f"SendGrid error {e.code}: {body}")
+        print(f"SENDGRID HTTP ERROR {e.code}: {body}")
+        return f"http_error_{e.code}: {body}"
     except Exception as e:
-        print(f"Email failed: {e}")
+        print(f"EMAIL EXCEPTION: {type(e).__name__}: {e}")
+        return f"exception: {e}"
 
 
 def validate_inputs(data, weights, impacts):
@@ -94,10 +94,8 @@ def validate_inputs(data, weights, impacts):
 def topsis(data, weights, impacts):
     validate_inputs(data, weights, impacts)
     matrix = data.iloc[:, 1:].astype(float)
-
     norm     = matrix / np.sqrt((matrix ** 2).sum())
     weighted = norm * weights
-
     ideal_best, ideal_worst = [], []
     for i, impact in enumerate(impacts):
         col = weighted.iloc[:, i]
@@ -107,11 +105,9 @@ def topsis(data, weights, impacts):
         else:
             ideal_best.append(col.min())
             ideal_worst.append(col.max())
-
     d_best  = np.sqrt(((weighted - ideal_best)  ** 2).sum(axis=1))
     d_worst = np.sqrt(((weighted - ideal_worst) ** 2).sum(axis=1))
     scores  = d_worst / (d_best + d_worst)
-
     result = data.copy()
     result['Topsis Score'] = scores.round(6)
     result['Rank'] = scores.rank(ascending=False, method='max').astype(int)
@@ -124,6 +120,22 @@ def home():
         "service": "TOPSIS Decision Analysis API",
         "status":  "running",
         "usage":   "POST /topsis with: file (CSV), weights, impacts, email"
+    })
+
+
+# ── Debug route — call this to test email directly ──────────────────────────
+@app.route('/test-email', methods=['GET'])
+def test_email():
+    to = request.args.get('to', '')
+    if not to:
+        return jsonify({"error": "Pass ?to=your@email.com"}), 400
+
+    result = send_email_sendgrid(to, b"Model,Score,Rank\nM1,0.82,1\nM2,0.61,2")
+    return jsonify({
+        "to": to,
+        "sender": SENDER_EMAIL,
+        "api_key_set": bool(SENDGRID_API_KEY),
+        "result": result
     })
 
 
@@ -171,7 +183,7 @@ def run_topsis():
     result.to_csv(output, index=False)
     csv_bytes = output.getvalue().encode()
 
-    # Send email in background thread — never blocks CSV download
+    # Send email in background — never blocks CSV download
     thread = threading.Thread(target=send_email_sendgrid, args=(email, csv_bytes))
     thread.daemon = True
     thread.start()
