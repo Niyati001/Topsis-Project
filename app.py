@@ -7,68 +7,58 @@ import re
 import threading
 import os
 import base64
-import urllib.request
-import urllib.error
-import json
+import requests
 
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
-SENDER_EMAIL     = os.environ.get('SENDER_EMAIL', '')
-SENDGRID_API_KEY = os.environ.get('SENDGRID_API_KEY', '')
+RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '')
+SENDER_EMAIL   = os.environ.get('SENDER_EMAIL', 'onboarding@resend.dev')
 
 
-def send_email_sendgrid(to_email, csv_bytes):
-    if not SENDGRID_API_KEY or not SENDER_EMAIL:
-        print("ERROR: SendGrid credentials not set in environment variables")
+def send_result_email(to_email, csv_bytes):
+    if not RESEND_API_KEY:
+        print("ERROR: RESEND_API_KEY not set")
         return "no_credentials"
 
     try:
         csv_b64 = base64.b64encode(csv_bytes).decode()
 
         payload = {
-            "personalizations": [{"to": [{"email": to_email}]}],
-            "from": {"email": SENDER_EMAIL, "name": "TOPSIS Decision Maker"},
+            "from": SENDER_EMAIL,
+            "to": [to_email],
             "subject": "Your TOPSIS Analysis Results",
-            "content": [{
-                "type": "text/html",
-                "value": """
+            "html": """
                 <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
                   <h2 style="color:#1D9E75">TOPSIS Analysis Complete</h2>
-                  <p>Your multi-criteria decision analysis results are attached.</p>
-                  <ul>
-                    <li><b>Topsis Score</b>: 0 to 1 — higher = better</li>
-                    <li><b>Rank</b>: 1 = best alternative</li>
-                  </ul>
+                  <p>Your TOPSIS analysis results are attached.</p>
                 </div>
-                """
-            }],
-            "attachments": [{
-                "content": csv_b64,
-                "type": "text/csv",
-                "filename": "topsis_result.csv",
-                "disposition": "attachment"
-            }]
+            """,
+            "attachments": [
+                {
+                    "filename": "topsis_result.csv",
+                    "content": csv_b64
+                }
+            ]
         }
 
-        data = json.dumps(payload).encode('utf-8')
-        req  = urllib.request.Request(
-            'https://api.sendgrid.com/v3/mail/send',
-            data=data,
+        response = requests.post(
+            "https://api.resend.com/emails",
             headers={
-                'Authorization': f'Bearer {SENDGRID_API_KEY}',
-                'Content-Type': 'application/json'
+                "Authorization": f"Bearer {RESEND_API_KEY}",
+                "Content-Type": "application/json"
             },
-            method='POST'
+            json=payload,
+            timeout=20
         )
-        with urllib.request.urlopen(req) as resp:
-            print(f"EMAIL OK — sent to {to_email}, status={resp.status}")
-            return "ok"
 
-    except urllib.error.HTTPError as e:
-        body = e.read().decode()
-        print(f"SENDGRID HTTP ERROR {e.code}: {body}")
-        return f"http_error_{e.code}: {body}"
+        print(f"RESEND RESPONSE: {response.status_code} - {response.text}")
+
+        if response.status_code >= 400:
+            return f"http_error_{response.status_code}: {response.text}"
+
+        return "ok"
+
     except Exception as e:
         print(f"EMAIL EXCEPTION: {type(e).__name__}: {e}")
         return f"exception: {e}"
@@ -130,7 +120,7 @@ def test_email():
     if not to:
         return jsonify({"error": "Pass ?to=your@email.com"}), 400
 
-    result = send_email_sendgrid(to, b"Model,Score,Rank\nM1,0.82,1\nM2,0.61,2")
+    result = send_result_email(to, b"Model,Score,Rank\nM1,0.82,1\nM2,0.61,2")
     return jsonify({
         "to": to,
         "sender": SENDER_EMAIL,
@@ -184,8 +174,7 @@ def run_topsis():
     csv_bytes = output.getvalue().encode()
 
     # Send email in background — never blocks CSV download
-    thread = threading.Thread(target=send_email_sendgrid, args=(email, csv_bytes))
-    thread.daemon = True
+    thread = threading.Thread(target=send_result_email, args=(email, csv_bytes))    thread.daemon = True
     thread.start()
 
     return send_file(
