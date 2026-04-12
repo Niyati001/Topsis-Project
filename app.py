@@ -124,7 +124,7 @@ def test_email():
     return jsonify({
         "to": to,
         "sender": SENDER_EMAIL,
-        "api_key_set": bool(SENDGRID_API_KEY),
+        "api_key_set": bool(RESEND_API_KEY),
         "result": result
     })
 
@@ -174,7 +174,8 @@ def run_topsis():
     csv_bytes = output.getvalue().encode()
 
     # Send email in background — never blocks CSV download
-    thread = threading.Thread(target=send_result_email, args=(email, csv_bytes))    thread.daemon = True
+    thread = threading.Thread(target=send_result_email, args=(email, csv_bytes))    
+    thread.daemon = True
     thread.start()
 
     return send_file(
