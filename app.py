@@ -4,54 +4,72 @@ import pandas as pd
 import numpy as np
 import io
 import re
-import smtplib
 import threading
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
-from email.mime.base import MIMEBase
-from email import encoders
 import os
+import base64
+import urllib.request
+import urllib.error
+import json
 
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
-SENDER_EMAIL    = os.environ.get('SENDER_EMAIL', '')
-SENDER_PASSWORD = os.environ.get('SENDER_PASSWORD', '')
+SENDER_EMAIL     = os.environ.get('SENDER_EMAIL', '')
+SENDGRID_API_KEY = os.environ.get('SENDGRID_API_KEY', '')
 
 
-def send_email_background(to_email, csv_bytes):
-    """Runs in background thread — never blocks or crashes the main response."""
-    if not SENDER_EMAIL or not SENDER_PASSWORD:
-        print("No email credentials set — skipping email.")
+def send_email_sendgrid(to_email, csv_bytes):
+    """Send email via SendGrid HTTP API — works on all cloud platforms."""
+    if not SENDGRID_API_KEY or not SENDER_EMAIL:
+        print("SendGrid credentials not set — skipping email.")
         return
+
     try:
-        msg = MIMEMultipart()
-        msg['From']    = SENDER_EMAIL
-        msg['To']      = to_email
-        msg['Subject'] = 'Your TOPSIS Analysis Results'
-        msg.attach(MIMEText("""Hello,
+        csv_b64 = base64.b64encode(csv_bytes).decode()
 
-Your TOPSIS analysis is complete. Results are attached as a CSV file.
+        payload = {
+            "personalizations": [{"to": [{"email": to_email}]}],
+            "from": {"email": SENDER_EMAIL, "name": "TOPSIS Decision Maker"},
+            "subject": "Your TOPSIS Analysis Results",
+            "content": [{
+                "type": "text/html",
+                "value": """
+                <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
+                  <h2 style="color:#1D9E75">TOPSIS Analysis Complete</h2>
+                  <p>Your multi-criteria decision analysis results are attached.</p>
+                  <h3>What's in the file:</h3>
+                  <ul>
+                    <li><b>Topsis Score</b>: 0 to 1 — higher means better alternative</li>
+                    <li><b>Rank</b>: 1 = best alternative overall</li>
+                  </ul>
+                  <p style="color:#888;font-size:12px">Sent by TOPSIS Decision Maker</p>
+                </div>
+                """
+            }],
+            "attachments": [{
+                "content": csv_b64,
+                "type": "text/csv",
+                "filename": "topsis_result.csv",
+                "disposition": "attachment"
+            }]
+        }
 
-Columns added:
-- Topsis Score: 0 to 1 (higher = better)
-- Rank: 1 = best alternative
+        data = json.dumps(payload).encode('utf-8')
+        req  = urllib.request.Request(
+            'https://api.sendgrid.com/v3/mail/send',
+            data=data,
+            headers={
+                'Authorization': f'Bearer {SENDGRID_API_KEY}',
+                'Content-Type': 'application/json'
+            },
+            method='POST'
+        )
+        with urllib.request.urlopen(req) as resp:
+            print(f"Email sent to {to_email} — status {resp.status}")
 
-Thank you for using TOPSIS Decision Maker.
-""", 'plain'))
-
-        part = MIMEBase('application', 'octet-stream')
-        part.set_payload(csv_bytes)
-        encoders.encode_base64(part)
-        part.add_header('Content-Disposition', 'attachment; filename="topsis_result.csv"')
-        msg.attach(part)
-
-        # Port 465 with SSL (works on Render free tier)
-        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
-            server.login(SENDER_EMAIL, SENDER_PASSWORD)
-            server.sendmail(SENDER_EMAIL, to_email, msg.as_string())
-        print(f"Email sent to {to_email}")
-
+    except urllib.error.HTTPError as e:
+        body = e.read().decode()
+        print(f"SendGrid error {e.code}: {body}")
     except Exception as e:
         print(f"Email failed: {e}")
 
@@ -153,8 +171,8 @@ def run_topsis():
     result.to_csv(output, index=False)
     csv_bytes = output.getvalue().encode()
 
-    # Send email in background — never blocks or crashes the response
-    thread = threading.Thread(target=send_email_background, args=(email, csv_bytes))
+    # Send email in background thread — never blocks CSV download
+    thread = threading.Thread(target=send_email_sendgrid, args=(email, csv_bytes))
     thread.daemon = True
     thread.start()
 
