@@ -282,12 +282,12 @@
   }
 
   // ─── Submit ──────────────────────────────────────────────────
-  function setLoading(on) {
+  function setLoading(on, msg = 'Processing…') {
     const btn = document.getElementById('submitBtn');
     const txt = document.getElementById('btnText');
     btn.disabled = on;
     txt.innerHTML = on
-      ? '<div class="spinner"></div> Processing…'
+      ? `<div class="spinner"></div> ${msg}`
       : 'Submit';
   }
 
@@ -321,7 +321,7 @@
     if (parsedCols > 0 && wArr.length !== parsedCols)
       return showError(`Your file has ${parsedCols} criteria columns but you entered ${wArr.length} values.`);
 
-    setLoading(true);
+    setLoading(true, 'Starting server…');
 
     const fd = new FormData();
     fd.append('file', csvFile);
@@ -329,17 +329,19 @@
     fd.append('impacts', impacts);
     fd.append('email', email);
 
-    // ── Change this URL to your backend ──
-    const BACKEND_URL = 'https://topsis-niyati.onrender.com/topsis'; 
+    const BACKEND_URL = 'https://topsis-niyati.onrender.com/topsis';
 
-
-    fetch(BACKEND_URL, { method: 'POST', body: fd })
+    // Wake up Render first (free tier sleeps after inactivity)
+    fetch('https://topsis-niyati.onrender.com/health')
+      .then(() => {
+        setLoading(true, 'Processing…');
+        return fetch(BACKEND_URL, { method: 'POST', body: fd });
+      })
       .then(r => {
         if (!r.ok) return r.text().then(t => { throw new Error(t || 'Server error'); });
         return r.blob();
       })
       .then(blob => {
-        // Download result CSV
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url; a.download = 'topsis_result.csv';
@@ -347,7 +349,7 @@
         showSuccess('TOPSIS analysis completed! Results have been sent to your email.');
         resetForm();
       })
-      .catch(err => showError(err.message || 'Failed to process. Please try again.'))
+      .catch(err => showError('Server is waking up — please wait 30 seconds and try again.'))
       .finally(() => setLoading(false));
   }
 
