@@ -4,9 +4,60 @@ import pandas as pd
 import numpy as np
 import io
 import re
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.base import MIMEBase
+from email import encoders
+import os
 
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
+
+# ── Email config — set these as Environment Variables on Render ──
+SENDER_EMAIL    = os.environ.get('SENDER_EMAIL', '')     # your Gmail
+SENDER_PASSWORD = os.environ.get('SENDER_PASSWORD', '')  # Gmail App Password
+
+
+def send_email(to_email, csv_bytes):
+    if not SENDER_EMAIL or not SENDER_PASSWORD:
+        return False, "Email credentials not configured"
+    try:
+        msg = MIMEMultipart()
+        msg['From']    = SENDER_EMAIL
+        msg['To']      = to_email
+        msg['Subject'] = 'Your TOPSIS Analysis Results'
+
+        body = """Hello,
+
+Your TOPSIS multi-criteria decision analysis is complete.
+Please find the ranked results attached as a CSV file.
+
+The file includes:
+- Original data columns
+- Topsis Score (0 to 1, higher is better)
+- Rank (1 = best alternative)
+
+Thank you for using the TOPSIS Decision Maker.
+"""
+        msg.attach(MIMEText(body, 'plain'))
+
+        # Attach CSV
+        part = MIMEBase('application', 'octet-stream')
+        part.set_payload(csv_bytes)
+        encoders.encode_base64(part)
+        part.add_header('Content-Disposition', 'attachment; filename="topsis_result.csv"')
+        msg.attach(part)
+
+        # Send via Gmail SMTP
+        with smtplib.SMTP('smtp.gmail.com', 587) as server:
+            server.starttls()
+            server.login(SENDER_EMAIL, SENDER_PASSWORD)
+            server.sendmail(SENDER_EMAIL, to_email, msg.as_string())
+
+        return True, "Email sent"
+    except Exception as e:
+        return False, str(e)
 
 
 def validate_inputs(data, weights, impacts):
@@ -64,11 +115,9 @@ def home():
 
 @app.route('/topsis', methods=['POST', 'OPTIONS'])
 def run_topsis():
-    # Handle CORS preflight
     if request.method == 'OPTIONS':
         return '', 200
 
-    # Validate file
     if 'file' not in request.files:
         return jsonify({'error': 'No file uploaded'}), 400
     file = request.files['file']
@@ -79,29 +128,24 @@ def run_topsis():
     impacts_str = request.form.get('impacts', '').strip()
     email       = request.form.get('email',   '').strip()
 
-    # Email: accepts any valid format including @thapar.edu, @gmail.com etc.
     if not email or not re.match(r'^[^\s@]+@[^\s@]+\.[^\s@]+$', email):
         return jsonify({'error': 'Invalid or missing email address'}), 400
 
-    # Parse weights
     try:
         weights = [float(w.strip()) for w in weights_str.split(',')]
     except ValueError:
         return jsonify({'error': 'Weights must be numeric values separated by commas'}), 400
 
-    # Parse impacts
     impacts = [i.strip() for i in impacts_str.split(',')]
 
     if len(weights) != len(impacts):
         return jsonify({'error': f'Weights ({len(weights)}) and impacts ({len(impacts)}) count must match'}), 400
 
-    # Read CSV
     try:
         data = pd.read_csv(file)
     except Exception as e:
         return jsonify({'error': f'Error reading CSV: {str(e)}'}), 400
 
-    # Run TOPSIS
     try:
         result = topsis(data, weights, impacts)
     except ValueError as e:
@@ -109,12 +153,16 @@ def run_topsis():
     except Exception as e:
         return jsonify({'error': f'Processing error: {str(e)}'}), 500
 
-    # Return result as CSV download
+    # Build CSV bytes
     output = io.StringIO()
     result.to_csv(output, index=False)
-    output.seek(0)
+    csv_bytes = output.getvalue().encode()
+
+    # Send email (non-blocking — still return file even if email fails)
+    email_ok, email_msg = send_email(email, csv_bytes)
+
     return send_file(
-        io.BytesIO(output.getvalue().encode()),
+        io.BytesIO(csv_bytes),
         mimetype='text/csv',
         as_attachment=True,
         download_name='topsis_result.csv'
