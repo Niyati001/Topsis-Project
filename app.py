@@ -6,7 +6,7 @@ import io
 import re
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={r"/*": {"origins": "*"}})
 
 
 def validate_inputs(data, weights, impacts):
@@ -29,8 +29,10 @@ def validate_inputs(data, weights, impacts):
 def topsis(data, weights, impacts):
     validate_inputs(data, weights, impacts)
     matrix = data.iloc[:, 1:].astype(float)
-    norm = matrix / np.sqrt((matrix ** 2).sum())
+
+    norm     = matrix / np.sqrt((matrix ** 2).sum())
     weighted = norm * weights
+
     ideal_best, ideal_worst = [], []
     for i, impact in enumerate(impacts):
         col = weighted.iloc[:, i]
@@ -40,11 +42,13 @@ def topsis(data, weights, impacts):
         else:
             ideal_best.append(col.min())
             ideal_worst.append(col.max())
+
     d_best  = np.sqrt(((weighted - ideal_best)  ** 2).sum(axis=1))
     d_worst = np.sqrt(((weighted - ideal_worst) ** 2).sum(axis=1))
-    scores = d_worst / (d_best + d_worst)
+    scores  = d_worst / (d_best + d_worst)
+
     result = data.copy()
-    result['Topsis Score'] = scores
+    result['Topsis Score'] = scores.round(6)
     result['Rank'] = scores.rank(ascending=False, method='max').astype(int)
     return result
 
@@ -58,8 +62,13 @@ def home():
     })
 
 
-@app.route('/topsis', methods=['POST'])
+@app.route('/topsis', methods=['POST', 'OPTIONS'])
 def run_topsis():
+    # Handle CORS preflight
+    if request.method == 'OPTIONS':
+        return '', 200
+
+    # Validate file
     if 'file' not in request.files:
         return jsonify({'error': 'No file uploaded'}), 400
     file = request.files['file']
@@ -70,24 +79,29 @@ def run_topsis():
     impacts_str = request.form.get('impacts', '').strip()
     email       = request.form.get('email',   '').strip()
 
+    # Email: accepts any valid format including @thapar.edu, @gmail.com etc.
     if not email or not re.match(r'^[^\s@]+@[^\s@]+\.[^\s@]+$', email):
         return jsonify({'error': 'Invalid or missing email address'}), 400
 
+    # Parse weights
     try:
         weights = [float(w.strip()) for w in weights_str.split(',')]
     except ValueError:
         return jsonify({'error': 'Weights must be numeric values separated by commas'}), 400
 
+    # Parse impacts
     impacts = [i.strip() for i in impacts_str.split(',')]
 
     if len(weights) != len(impacts):
         return jsonify({'error': f'Weights ({len(weights)}) and impacts ({len(impacts)}) count must match'}), 400
 
+    # Read CSV
     try:
         data = pd.read_csv(file)
     except Exception as e:
         return jsonify({'error': f'Error reading CSV: {str(e)}'}), 400
 
+    # Run TOPSIS
     try:
         result = topsis(data, weights, impacts)
     except ValueError as e:
@@ -95,6 +109,7 @@ def run_topsis():
     except Exception as e:
         return jsonify({'error': f'Processing error: {str(e)}'}), 500
 
+    # Return result as CSV download
     output = io.StringIO()
     result.to_csv(output, index=False)
     output.seek(0)
