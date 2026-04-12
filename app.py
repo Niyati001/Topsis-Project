@@ -5,6 +5,7 @@ import numpy as np
 import io
 import re
 import smtplib
+import threading
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
@@ -14,50 +15,45 @@ import os
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
-# ── Email config — set these as Environment Variables on Render ──
-SENDER_EMAIL    = os.environ.get('SENDER_EMAIL', '')     # your Gmail
-SENDER_PASSWORD = os.environ.get('SENDER_PASSWORD', '')  # Gmail App Password
+SENDER_EMAIL    = os.environ.get('SENDER_EMAIL', '')
+SENDER_PASSWORD = os.environ.get('SENDER_PASSWORD', '')
 
 
-def send_email(to_email, csv_bytes):
+def send_email_background(to_email, csv_bytes):
+    """Runs in background thread — never blocks or crashes the main response."""
     if not SENDER_EMAIL or not SENDER_PASSWORD:
-        return False, "Email credentials not configured"
+        print("No email credentials set — skipping email.")
+        return
     try:
         msg = MIMEMultipart()
         msg['From']    = SENDER_EMAIL
         msg['To']      = to_email
         msg['Subject'] = 'Your TOPSIS Analysis Results'
+        msg.attach(MIMEText("""Hello,
 
-        body = """Hello,
+Your TOPSIS analysis is complete. Results are attached as a CSV file.
 
-Your TOPSIS multi-criteria decision analysis is complete.
-Please find the ranked results attached as a CSV file.
+Columns added:
+- Topsis Score: 0 to 1 (higher = better)
+- Rank: 1 = best alternative
 
-The file includes:
-- Original data columns
-- Topsis Score (0 to 1, higher is better)
-- Rank (1 = best alternative)
+Thank you for using TOPSIS Decision Maker.
+""", 'plain'))
 
-Thank you for using the TOPSIS Decision Maker.
-"""
-        msg.attach(MIMEText(body, 'plain'))
-
-        # Attach CSV
         part = MIMEBase('application', 'octet-stream')
         part.set_payload(csv_bytes)
         encoders.encode_base64(part)
         part.add_header('Content-Disposition', 'attachment; filename="topsis_result.csv"')
         msg.attach(part)
 
-        # Send via Gmail SMTP
-        with smtplib.SMTP('smtp.gmail.com', 587) as server:
-            server.starttls()
+        # Port 465 with SSL (works on Render free tier)
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
             server.login(SENDER_EMAIL, SENDER_PASSWORD)
             server.sendmail(SENDER_EMAIL, to_email, msg.as_string())
+        print(f"Email sent to {to_email}")
 
-        return True, "Email sent"
     except Exception as e:
-        return False, str(e)
+        print(f"Email failed: {e}")
 
 
 def validate_inputs(data, weights, impacts):
@@ -153,13 +149,14 @@ def run_topsis():
     except Exception as e:
         return jsonify({'error': f'Processing error: {str(e)}'}), 500
 
-    # Build CSV bytes
     output = io.StringIO()
     result.to_csv(output, index=False)
     csv_bytes = output.getvalue().encode()
 
-    # Send email (non-blocking — still return file even if email fails)
-    email_ok, email_msg = send_email(email, csv_bytes)
+    # Send email in background — never blocks or crashes the response
+    thread = threading.Thread(target=send_email_background, args=(email, csv_bytes))
+    thread.daemon = True
+    thread.start()
 
     return send_file(
         io.BytesIO(csv_bytes),
