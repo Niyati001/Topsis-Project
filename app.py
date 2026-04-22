@@ -52,15 +52,6 @@ def send_result_email_smtp(to_email, csv_bytes):
     return "ok"
 
 
-def send_result_email(to_email, csv_bytes):
-    if SMTP_USERNAME and SMTP_APP_PASSWORD:
-        try:
-            return send_result_email_smtp(to_email, csv_bytes)
-        except Exception as e:
-            print(f"SMTP EMAIL EXCEPTION: {type(e).__name__}: {e}")
-            return f"smtp_exception: {e}"
-
-
 def send_result_email_smtp(to_email, csv_bytes, result):
 
     top_results = result.sort_values(by="Rank").head(3)
@@ -230,9 +221,7 @@ def run_topsis():
     csv_bytes = output.getvalue().encode()
 
     # Send email in background — never blocks CSV download
-    thread = threading.Thread(target=send_result_email, args=(email, csv_bytes, result))    
-    thread.daemon = True
-    thread.start()
+    send_result_email(email, csv_bytes, result)
 
     return send_file(
         io.BytesIO(csv_bytes),
