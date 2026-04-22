@@ -60,6 +60,60 @@ def send_result_email(to_email, csv_bytes):
             print(f"SMTP EMAIL EXCEPTION: {type(e).__name__}: {e}")
             return f"smtp_exception: {e}"
 
+
+def send_result_email_smtp(to_email, csv_bytes, result):
+
+    top_results = result.sort_values(by="Rank").head(3)
+    top_choice = top_results.iloc[0]
+    preview_html = top_results.drop(columns=["Topsis Score"]).to_html(index=False)
+
+    message = EmailMessage()
+    message['From'] = SENDER_EMAIL
+    message['To'] = to_email
+    message['Subject'] = '📊 Your TOPSIS Results Are Ready'
+
+    message.set_content("Your TOPSIS results are attached.")
+
+    message.add_alternative(f"""
+    <div style="font-family: Arial; max-width:600px; margin:auto; padding:20px;">
+
+      <h2>📊 Your TOPSIS Results</h2>
+
+      <p>Here are your top-ranked alternatives:</p>
+
+      {preview_html}
+
+      <p><strong>🏆 Top Choice:</strong> {top_choice[0]}</p>
+
+      <p>The full results are attached as a CSV file.</p>
+
+    </div>
+    """, subtype='html')
+
+    message.add_attachment(
+        csv_bytes,
+        maintype='text',
+        subtype='csv',
+        filename='topsis_result.csv',
+    )
+
+    with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+        server.starttls()
+        server.login(SMTP_USERNAME, SMTP_APP_PASSWORD)
+        server.send_message(message)
+
+    return "ok"
+
+
+
+def send_result_email(to_email, csv_bytes, result):
+    if SMTP_USERNAME and SMTP_APP_PASSWORD:
+        try:
+            return send_result_email_smtp(to_email, csv_bytes, result)
+        except Exception as e:
+            print(f"SMTP EMAIL EXCEPTION: {type(e).__name__}: {e}")
+            return f"smtp_exception: {e}"
+
     print("ERROR: SMTP credentials not set")
     return "no_credentials"
 
@@ -164,6 +218,8 @@ def run_topsis():
 
     try:
         result = topsis(data, weights, impacts)
+        top_results = result.sort_values(by="Rank").head(3)
+        top_choice = top_results.iloc[0]
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
     except Exception as e:
@@ -174,7 +230,7 @@ def run_topsis():
     csv_bytes = output.getvalue().encode()
 
     # Send email in background — never blocks CSV download
-    thread = threading.Thread(target=send_result_email, args=(email, csv_bytes))    
+    thread = threading.Thread(target=send_result_email, args=(email, csv_bytes, result))    
     thread.daemon = True
     thread.start()
 
