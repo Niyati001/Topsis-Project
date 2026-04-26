@@ -1,5 +1,4 @@
-# TOPSIS Multi-Criteria Decision Analysis System  ![Static Badge](https://img.shields.io/badge/https%3A%2F%2Fniyati001.github.io%2FTopsis-Project%2F)
-
+# TOPSIS Multi-Criteria Decision Analysis System  https://img.shields.io/badge/https%3A%2F%2Fniyati001.github.io%2FTopsis-Project%2F
 
 
 > End-to-end implementation of the TOPSIS algorithm — from a pip-installable Python package to a deployed REST API with a web interface.
