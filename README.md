@@ -1,10 +1,10 @@
-# TOPSIS Multi-Criteria Decision Analysis System  [Visit my website]([https://niyati001.github.io/Topsis-Project/])
-
-
+# TOPSIS Multi-Criteria Decision Analysis System  
 
 > End-to-end implementation of the TOPSIS algorithm — from a pip-installable Python package to a deployed REST API with a web interface.
 
 ---
+
+https://niyati001.github.io/Topsis-Project/
 
 ## What This Project Covers
 
