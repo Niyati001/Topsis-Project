@@ -1,12 +1,12 @@
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
-from email.message import EmailMessage
 import pandas as pd
 import numpy as np
 import io
 import re
 import os
-import smtplib
+import requests
+import base64
 
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
@@ -28,57 +28,76 @@ def send_result_email(to_email, csv_bytes, result):
             top_choice_name = "N/A"
         else:
             top_choice = top_results.iloc[0]
-            top_choice_name = top_choice.iloc[0]  # first column value
-            preview_html = top_results.drop(columns=["Topsis Score"]).to_html(index=False)
+            top_choice_name = top_choice.iloc[0]
 
-        # Build email
-        message = EmailMessage()
-        message['From'] = f"TOPSIS Analyzer <{SENDER_EMAIL}>"
-        message['To'] = to_email
-        message['Subject'] = "📊 Your TOPSIS Results Are Ready"
+            preview_html = top_results.drop(
+                columns=["Topsis Score"]
+            ).to_html(index=False)
 
-        message.set_content(
-            "Your TOPSIS analysis is complete. See attachment for full results."
+        # Convert CSV to base64
+        csv_base64 = base64.b64encode(csv_bytes).decode()
+
+        # Brevo API payload
+        payload = {
+            "sender": {
+                "name": "TOPSIS Analyzer",
+                "email": SENDER_EMAIL
+            },
+            "to": [
+                {
+                    "email": to_email
+                }
+            ],
+            "subject": "📊 Your TOPSIS Results Are Ready",
+
+            "htmlContent": f"""
+            <div style="font-family: Arial, sans-serif; max-width:600px; margin:auto; padding:20px;">
+                <h2>📊 Your TOPSIS Results</h2>
+
+                <p>Your decision analysis has been completed successfully.</p>
+
+                <p><strong>🏆 Top Choice:</strong> {top_choice_name}</p>
+
+                <p><strong>Top-ranked alternatives:</strong></p>
+
+                {preview_html}
+
+                <p>The complete CSV report is attached.</p>
+            </div>
+            """,
+
+            "attachment": [
+                {
+                    "content": csv_base64,
+                    "name": "topsis_result.csv"
+                }
+            ]
+        }
+
+        headers = {
+            "accept": "application/json",
+            "api-key": os.environ.get("BREVO_API_KEY"),
+            "content-type": "application/json"
+        }
+
+        response = requests.post(
+            "https://api.brevo.com/v3/smtp/email",
+            json=payload,
+            headers=headers,
+            timeout=20
         )
 
-        message.add_alternative(f"""
-        <div style="font-family: Arial, sans-serif; max-width:600px; margin:auto; padding:20px;">
-            <h2>📊 Your TOPSIS Results</h2>
+        print("Brevo status:", response.status_code)
+        print("Brevo response:", response.text)
 
-            <p>Your decision analysis has been successfully completed.</p>
+        if response.status_code not in [200, 201]:
+            return f"error: {response.text}"
 
-            <p><strong>Top-ranked alternatives:</strong></p>
-
-            {preview_html}
-
-            <p><strong>🏆 Top Choice:</strong> {top_choice_name}</p>
-
-            <p>The complete results are attached as a CSV file.</p>
-        </div>
-        """, subtype='html')
-
-        # Attach CSV
-        message.add_attachment(
-            csv_bytes,
-            maintype='text',
-            subtype='csv',
-            filename='topsis_result.csv',
-        )
-
-        # Send email
-        with smtplib.SMTP_SSL("smtp-relay.brevo.com", 465, timeout=30) as server:
-            server.login(
-                EMAIL_USER,
-                EMAIL_PASS
-            )
-
-            server.send_message(message)
-
-        print("Email sent to:", to_email)
+        print("Email sent successfully")
         return "ok"
 
     except Exception as e:
-        print(f"SMTP EMAIL EXCEPTION: {type(e).__name__}: {e}")
+        print(f"EMAIL API EXCEPTION: {type(e).__name__}: {e}")
         return f"error: {e}"
 
 
