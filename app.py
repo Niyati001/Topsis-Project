@@ -66,8 +66,7 @@ def send_result_email(to_email, csv_bytes, result):
         )
 
         # Send email
-        with smtplib.SMTP("smtp-relay.brevo.com", 465, timeout=15) as server:
-            server.starttls()
+        with smtplib.SMTP("smtp-relay.brevo.com", 465, timeout=30) as server:
 
             server.login(
                 EMAIL_USER,
@@ -177,7 +176,7 @@ def run_topsis():
     result.to_csv(output, index=False)
     csv_bytes = output.getvalue().encode()
 
-    # ✅ Send email (NO THREAD)
+     ✅ Send email (NO THREAD)
     email_status = send_result_email(email, csv_bytes, result)
 
     if email_status != "ok":
