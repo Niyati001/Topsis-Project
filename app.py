@@ -66,8 +66,7 @@ def send_result_email(to_email, csv_bytes, result):
         )
 
         # Send email
-        with smtplib.SMTP("smtp-relay.brevo.com", 465, timeout=30) as server:
-
+        with smtplib.SMTP_SSL("smtp-relay.brevo.com", 465, timeout=30) as server:
             server.login(
                 EMAIL_USER,
                 EMAIL_PASS
