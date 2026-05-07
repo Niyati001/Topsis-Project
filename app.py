@@ -74,7 +74,7 @@ def send_result_email(to_email, csv_bytes, result):
                 EMAIL_PASS
            )
 
-    server.send_message(message)
+           server.send_message(message)
 
         print("Email sent to:", to_email)
         return "ok"
