@@ -11,11 +11,7 @@ import base64
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
-EMAIL_USER = os.environ.get('EMAIL_USER', '')
-EMAIL_PASS = os.environ.get('EMAIL_PASS', '').replace(' ', '')
-
-SENDER_EMAIL = EMAIL_USER
-
+SENDER_EMAIL = os.environ.get('SENDER_EMAIL')
 
 # ─── EMAIL FUNCTION ───────────────────────────────────────────
 def send_result_email(to_email, csv_bytes, result):
