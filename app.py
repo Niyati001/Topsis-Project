@@ -176,7 +176,7 @@ def run_topsis():
     result.to_csv(output, index=False)
     csv_bytes = output.getvalue().encode()
 
-     ✅ Send email (NO THREAD)
+    # ✅ Send email (NO THREAD)
     email_status = send_result_email(email, csv_bytes, result)
 
     if email_status != "ok":
