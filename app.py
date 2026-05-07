@@ -11,12 +11,10 @@ import smtplib
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
-# ─── SMTP CONFIG ──────────────────────────────────────────────
-SMTP_HOST = os.environ.get('SMTP_HOST', 'smtp.gmail.com')
-SMTP_PORT = int(os.environ.get('SMTP_PORT', '587'))
-SMTP_USERNAME = os.environ.get('SMTP_USERNAME', '')
-SMTP_APP_PASSWORD = os.environ.get('SMTP_APP_PASSWORD', '').replace(' ', '')
-SENDER_EMAIL = os.environ.get('SENDER_EMAIL', SMTP_USERNAME)
+EMAIL_USER = os.environ.get('EMAIL_USER', '')
+EMAIL_PASS = os.environ.get('EMAIL_PASS', '').replace(' ', '')
+
+SENDER_EMAIL = EMAIL_USER
 
 
 # ─── EMAIL FUNCTION ───────────────────────────────────────────
@@ -68,10 +66,15 @@ def send_result_email(to_email, csv_bytes, result):
         )
 
         # Send email
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+        with smtplib.SMTP("smtp-relay.brevo.com", 587, timeout=15) as server:
             server.starttls()
-            server.login(SMTP_USERNAME, SMTP_APP_PASSWORD)
-            server.send_message(message)
+
+            server.login(
+                EMAIL_USER,
+                EMAIL_PASS
+           )
+
+    server.send_message(message)
 
         print("Email sent to:", to_email)
         return "ok"
@@ -175,7 +178,12 @@ def run_topsis():
     csv_bytes = output.getvalue().encode()
 
     # ✅ Send email (NO THREAD)
-    send_result_email(email, csv_bytes, result)
+    email_status = send_result_email(email, csv_bytes, result)
+
+    if email_status != "ok":
+       return jsonify({
+           "error": email_status
+       }), 500
 
     # Return file download
     return send_file(
