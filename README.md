@@ -4,7 +4,9 @@
 
 ---
 
-https://niyati001.github.io/Topsis-Project/
+Live Demo: https://niyati001.github.io/Topsis-Project/
+Backend API: https://topsis-niyati.onrender.com
+PyPI Package: https://pypi.org/project/Topsis-Niyati-102303356/
 
 ## What This Project Covers
 
@@ -12,7 +14,7 @@ https://niyati001.github.io/Topsis-Project/
 |------|-------------|------|
 | **I** | TOPSIS algorithm from scratch + CLI tool | Python, NumPy, Pandas |
 | **II** | Published Python package to PyPI | setuptools, pip, PyPI |
-| **III** | REST API + Web Interface | Flask, HTML/CSS/JS |
+| **III** | REST API + Web Interface | Flask, HTML/CSS/JS | 
 
 ---
 
